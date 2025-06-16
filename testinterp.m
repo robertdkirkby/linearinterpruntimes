@@ -5,7 +5,7 @@
 % the matrix).
 
 % Basic setup
-N_a=15000; % tried 500, 5000, 50000, 500000
+N_a=5000; % tried 500, 5000, 50000, 500000
 N_z=31; % tried 9, 90, 900
 vfoptions.ngridinterpt=51; % tried 2, 11, 51
 n2short=vfoptions.ngridinterpt;
@@ -16,6 +16,13 @@ N_aprime=(N_a-1)*n2short+N_a;
 % Then I try EV as three dimensions (on gpu), interp1() is fastest
 
 % Conclusion is that linear interpolation is better done using interp1().
+
+% griddedInterpolant() is fastest if you only count the 'evaluate' step,
+% but not if you include the 'create' step [because of how I want to use
+% them I need to count both steps]
+
+% Matlab also has interpn() and interp1q(), but these do not support GPU as
+% of writing.
 
 S=100; % number of runs (report average runtime across them)
 
@@ -74,7 +81,7 @@ gridinterp_probB=1-gridinterp_prob; % prob of upper grid point
 
 
 % Create interpolated version of EV
-timer=zeros(S,4);
+timer=zeros(S,5);
 for ii=1:S
     tic;
     EVinterp1=interp1(a_grid,EV,aprime_grid);
@@ -94,6 +101,15 @@ for ii=1:S
     EVrepeated=repelem(EV,1+n2short,1);
     EVinterp4=gridinterp_prob.*EVrepeated(1:end-n2short,:)+gridinterp_probB.*EVrepeated(n2short+1:end,:);
     timer(ii,4)=toc;
+
+    % griddedInterpolant
+    tic;
+    F=griddedInterpolant(a_grid,EV);
+    timer(ii,6)=toc;
+    tic;
+    EVinterp5=F(aprime_grid);
+    timer(ii,7)=toc;
+    timer(ii,5)=timer(ii,6)+timer(ii,7);
 end
 disp('times')
 max(timer,[],1)
@@ -102,6 +118,8 @@ fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp1(:)-E
 fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp2(:)-EVinterp3(:))))
 fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp1(:)-EVinterp4(:))))
 fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp3(:)-EVinterp4(:))))
+fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp1(:)-EVinterp5(:))))
+fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp3(:)-EVinterp5(:))))
 
 % First and third are essentially same runtime when N_a=5000, but first is
 % marginally faster when N_a=50000. With N_a=500000, the runtimes seem
