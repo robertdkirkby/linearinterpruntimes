@@ -5,9 +5,9 @@
 % the matrix).
 
 % Basic setup
-N_a=50000; % tried 500, 5000, 50000, 500000
-N_z=90; % tried 9, 90, 900
-vfoptions.ngridinterpt=2;
+N_a=15000; % tried 500, 5000, 50000, 500000
+N_z=31; % tried 9, 90, 900
+vfoptions.ngridinterpt=51; % tried 2, 11, 51
 n2short=vfoptions.ngridinterpt;
 N_aprime=(N_a-1)*n2short+N_a;
 
@@ -70,27 +70,38 @@ gridinterp_ind2=gridinterp_ind+N_a*(0:1:N_z-1); % make it a full matrix index
 gridinterp_ind2plus1=gridinterp_ind+1+N_a*(0:1:N_z-1); % make it a full matrix index
 
 gridinterp_prob=gpuArray([repmat(linspace(1,1/(n2short+1),1+n2short)',N_a-1,1);0]); % prob of lower grid point
+gridinterp_probB=1-gridinterp_prob; % prob of upper grid point
+
 
 % Create interpolated version of EV
-timer=zeros(S,3);
+timer=zeros(S,4);
 for ii=1:S
     tic;
     EVinterp1=interp1(a_grid,EV,aprime_grid);
     timer(ii,1)=toc;
 
     tic;
-    EVinterp2=gridinterp_prob.*EV(gridinterp_ind,:)+(1-gridinterp_prob).*EV(gridinterp_indplus1,:);
+    EVinterp2=gridinterp_prob.*EV(gridinterp_ind,:)+gridinterp_probB.*EV(gridinterp_indplus1,:);
     timer(ii,2)=toc;
 
+    % If I do the whole 2D index, that makes it faster
     tic;
-    EVinterp3=gridinterp_prob.*EV(gridinterp_ind2)+(1-gridinterp_prob).*EV(gridinterp_ind2plus1);
+    EVinterp3=gridinterp_prob.*EV(gridinterp_ind2)+gridinterp_probB.*EV(gridinterp_ind2plus1);
     timer(ii,3)=toc;
+
+    % Tried to see if repelem() is faster than indexing, but it is slower
+    tic;
+    EVrepeated=repelem(EV,1+n2short,1);
+    EVinterp4=gridinterp_prob.*EVrepeated(1:end-n2short,:)+gridinterp_probB.*EVrepeated(n2short+1:end,:);
+    timer(ii,4)=toc;
 end
 disp('times')
 max(timer,[],1)
 fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp1(:)-EVinterp2(:))))
 fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp1(:)-EVinterp3(:))))
 fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp2(:)-EVinterp3(:))))
+fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp1(:)-EVinterp4(:))))
+fprintf('Check they are equal (should be zero): %1.8f \n',max(abs(EVinterp3(:)-EVinterp4(:))))
 
 % First and third are essentially same runtime when N_a=5000, but first is
 % marginally faster when N_a=50000. With N_a=500000, the runtimes seem
